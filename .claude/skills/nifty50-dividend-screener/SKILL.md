@@ -54,30 +54,18 @@ and merely yields less, that's a hold, not a sell.
   user's Screener.in credentials. If they're missing, the script exits with a
   clear message — tell the user to set them rather than trying to work around it.
 - Dependencies: `pip install -r requirements.txt` (just `requests`).
-- **For Slack delivery (optional but preferred)** the script posts the report
-  through a bot so it actually notifies the user (see "Delivering the report
-  over Slack" below). Set these environment variables:
-  - `SLACK_BOT_TOKEN` — a bot user OAuth token (`xoxb-...`) from a Slack app the
-    user created with the `chat:write` scope.
-  - `SLACK_CHANNEL_ID` — `C0BJB2WBB7Z` (the private `#dividend-reports`).
-  - `SLACK_MENTION_USER_ID` — `U0BJL1X5KS7` (the user, @-mentioned at the top).
-
-  The bot must be **invited to the channel** (`/invite @<botname>`), otherwise a
-  private channel is invisible to it and `chat.postMessage` returns
-  `channel_not_found`. Newly-added environment variables only take effect in a
-  **fresh session** — a container already running when they were added won't see
-  them.
-- **For phone push via ntfy (optional)** the script sends a concise push
+- **For phone push via ntfy** the script sends the report as a push
   notification through [ntfy](https://ntfy.sh) when `NTFY_TOPIC` is set (see the
-  `post_to_ntfy` function). The user installs the ntfy app and subscribes to the
-  same topic; no account or token is needed on ntfy.sh.
+  `post_to_ntfy` function and "Delivering the report over ntfy" below). The user
+  installs the ntfy app and subscribes to the same topic; no account or token is
+  needed on ntfy.sh.
   - `NTFY_TOPIC` — the topic to publish to. **Anyone who knows the topic can read
     it**, so use a long, unguessable value (treat like a secret).
   - `NTFY_SERVER` — optional, defaults to `https://ntfy.sh`.
   - `NTFY_TOKEN` — optional bearer token for a protected/self-hosted server.
 
-  The push is a summary (counts + BUY list, with STRONG SELL / Dividend Dropped
-  led first and bumped to high priority), not the full table.
+  Newly-added environment variables only take effect in a **fresh session** — a
+  container already running when they were added won't see them.
 
 ## Running it
 
@@ -107,50 +95,35 @@ usually what the user cares about most.
 If the script printed an `ERROR:` line (e.g. all constituent sources were
 blocked, or login failed), report that honestly instead of inventing results.
 
-## Delivering the report over Slack
+## Delivering the report over ntfy
 
-The report is posted to the user's private `#dividend-reports` channel so it
-lands somewhere durable and actually pings them.
+The report is delivered to the user's phone as an [ntfy](https://ntfy.sh) push
+notification, so it actually pings them. A push from ntfy comes from the ntfy
+service (not the user's own account), so there's no self-notification problem to
+work around.
 
-**Who posts matters.** Slack never notifies you about a message you posted
-yourself — including a self-@mention. The Slack MCP tools here are authenticated
-as the *user*, so anything sent with `slack_send_message` goes out under the
-user's own name and will **not** notify them, no matter the mention. Getting a
-real ping requires a *different* identity (a bot) to post and mention the user.
+**The script sends it.** When `NTFY_TOPIC` is set, the screener publishes the
+report itself (see `post_to_ntfy` in `nifty50_dividend_screener.py`) and prints
+`Push notification sent via ntfy.` on success. You don't post anything yourself —
+just show the full Symbol | Signal table in chat as described above.
 
-**Preferred path — the script posts as a bot.** The screener itself posts the
-report when these environment variables are set (see the `post_to_slack`
-function in `nifty50_dividend_screener.py`):
+The push is a concise summary, not the full table: the qualifying count and the
+BUY list, with any STRONG SELL / Dividend Dropped symbols led first and the
+notification bumped to high priority so actionable changes stand out.
 
-- `SLACK_BOT_TOKEN` — a bot user OAuth token (`xoxb-...`) for a Slack app the
-  user created; the bot must be invited to the channel.
-- `SLACK_CHANNEL_ID` — `C0BJB2WBB7Z` (the private `#dividend-reports`).
-- `SLACK_MENTION_USER_ID` — `U0BJL1X5KS7` (the user, @-mentioned at the top).
+If the run prints `WARNING: could not send ntfy notification: ...`, the publish
+failed (network/proxy blocked, or a bad `NTFY_SERVER`/`NTFY_TOKEN`) — report it
+honestly; the report was still written to `Suggestions.md`. If the run prints
+nothing about ntfy, `NTFY_TOPIC` isn't set (e.g. an already-running session that
+predates the variable) — tell the user to set it and re-run from a fresh session,
+or pass it inline for a one-off:
 
-When the run prints `Report posted to Slack.`, the bot already delivered it —
-**do not** also post via `slack_send_message`, or the user gets a duplicate (and
-the duplicate from their own account is the one that doesn't notify anyway). Just
-show the table in chat.
+```bash
+NTFY_TOPIC='<the-topic>' python nifty50_dividend_screener.py
+```
 
-If the run instead prints `WARNING: Slack post failed: channel_not_found`, the
-token is valid but the **bot isn't a member of the private channel** — tell the
-user to invite it (`/invite @<botname>` in `#dividend-reports`), then re-run.
-`invalid_auth`/`token_revoked` means the `SLACK_BOT_TOKEN` is wrong or rotated;
-`not_in_channel` also means invite the bot.
-
-**Fallback when the bot isn't configured.** If the run doesn't print
-`Report posted to Slack.` (bot env vars unset), you may still post with
-`slack_send_message` to `C0BJB2WBB7Z` with the `<@U0BJL1X5KS7>` mention so the
-report at least lands in the channel — but tell the user plainly it won't notify
-them until the bot token is set up, and point them at the `SLACK_BOT_TOKEN`
-setup above. Use the same Symbol | Signal table with a short header and the
-"X of 50 qualify / what changed" summary; lead with any STRONG SELL or Dividend
-Dropped rows.
-
-If the channel can't be found (different workspace, deleted channel), don't
-silently fall back to a self-DM — it won't notify. Recreate it with
-`slack_create_conversation(channel_name="dividend-reports", is_private=True)` or
-ask the user where to post.
+Reminder on the topic: it acts as a password (there's no auth on ntfy.sh), so
+keep it long and unguessable, and never commit it or other environment values.
 
 ## Persisting the update
 
