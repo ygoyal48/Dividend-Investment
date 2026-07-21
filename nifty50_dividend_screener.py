@@ -17,8 +17,6 @@ LOGIN_URL = "https://www.screener.in/login/"
 NIFTY50_CSV_URL = "https://niftyindices.com/IndexConstituent/ind_nifty50list.csv"
 _HERE = os.path.dirname(os.path.abspath(__file__))
 SUGGESTIONS_PATH = os.path.join(_HERE, "Suggestions.md")
-# Bundled fallback constituent list, refreshed whenever the live fetch succeeds.
-CONSTITUENTS_CACHE = os.path.join(_HERE, "nifty50_constituents.csv")
 
 # niftyindices sits behind a WAF that blocks bare user-agents; use browser headers.
 NIFTY_HEADERS = {
@@ -50,29 +48,28 @@ def _parse_constituents_csv(text):
 
 
 def fetch_nifty50_constituents(session, retries=3):
-    """Fetch the live Nifty 50 constituent list, refreshing the local cache.
+    """Fetch the live Nifty 50 constituent list from niftyindices.
 
-    Falls back to the bundled CSV if every live attempt fails, so a WAF block
-    on niftyindices never breaks a run.
+    Raises RuntimeError if every live attempt fails - there is no fallback,
+    so a stale/hardcoded list is never used.
     """
+    last_error = None
     for attempt in range(retries):
         try:
             resp = session.get(NIFTY50_CSV_URL, headers=NIFTY_HEADERS, timeout=20)
             resp.raise_for_status()
             constituents = _parse_constituents_csv(resp.text)
             if constituents:
-                with open(CONSTITUENTS_CACHE, "w") as f:
-                    f.write(resp.text)
                 return constituents
-        except (requests.RequestException, KeyError):
-            pass
+            last_error = "empty constituent list"
+        except (requests.RequestException, KeyError) as exc:
+            last_error = exc
         time.sleep(2 * (attempt + 1))
 
-    if os.path.exists(CONSTITUENTS_CACHE):
-        with open(CONSTITUENTS_CACHE) as f:
-            print("Warning: live Nifty 50 fetch failed; using bundled constituent cache.")
-            return _parse_constituents_csv(f.read())
-    raise RuntimeError("Could not fetch Nifty 50 constituents and no local cache is available.")
+    raise RuntimeError(
+        f"Could not fetch the live Nifty 50 constituent list from niftyindices "
+        f"after {retries} attempts ({last_error})."
+    )
 
 
 def fetch_dividend_yield(session, symbol, retries=2):
@@ -202,4 +199,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (RuntimeError, requests.RequestException) as exc:
+        sys.exit(f"ERROR: {exc}")
