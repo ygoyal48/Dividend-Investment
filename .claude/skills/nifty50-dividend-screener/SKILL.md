@@ -67,6 +67,17 @@ and merely yields less, that's a hold, not a sell.
   `channel_not_found`. Newly-added environment variables only take effect in a
   **fresh session** — a container already running when they were added won't see
   them.
+- **For phone push via ntfy (optional)** the script sends a concise push
+  notification through [ntfy](https://ntfy.sh) when `NTFY_TOPIC` is set (see the
+  `post_to_ntfy` function). The user installs the ntfy app and subscribes to the
+  same topic; no account or token is needed on ntfy.sh.
+  - `NTFY_TOPIC` — the topic to publish to. **Anyone who knows the topic can read
+    it**, so use a long, unguessable value (treat like a secret).
+  - `NTFY_SERVER` — optional, defaults to `https://ntfy.sh`.
+  - `NTFY_TOKEN` — optional bearer token for a protected/self-hosted server.
+
+  The push is a summary (counts + BUY list, with STRONG SELL / Dividend Dropped
+  led first and bumped to high priority), not the full table.
 
 ## Running it
 

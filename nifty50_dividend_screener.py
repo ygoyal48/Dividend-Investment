@@ -240,6 +240,67 @@ def post_to_slack(rows, min_yield, generated_at, total):
         print(f"WARNING: Slack post failed: {data.get('error')}")
 
 
+NTFY_DEFAULT_SERVER = "https://ntfy.sh"
+
+
+def post_to_ntfy(rows, min_yield, total):
+    """Send the report as a phone push notification via ntfy, if configured.
+
+    ntfy (https://ntfy.sh) delivers push notifications to the ntfy phone app
+    with no account needed: the script publishes to a topic, the phone
+    subscribes to that same topic. Anyone who knows the topic name can read it,
+    so it should be long and unguessable - treat it like a secret.
+
+    Configuration (environment variables; skipped silently if NTFY_TOPIC unset):
+      NTFY_TOPIC   topic to publish to (treat like a secret)
+      NTFY_SERVER  base URL of the ntfy server (default https://ntfy.sh)
+      NTFY_TOKEN   optional bearer token for a protected/self-hosted server
+    """
+    topic = os.environ.get("NTFY_TOPIC")
+    if not topic:
+        return
+    server = os.environ.get("NTFY_SERVER", NTFY_DEFAULT_SERVER).rstrip("/")
+
+    sell = [s for s, sig in rows if sig == STRONG_SELL]
+    dropped = [s for s, sig in rows if sig == DIVIDEND_DROPPED]
+    buys = [s for s, sig in rows if sig == BUY]
+
+    body_lines = []
+    if sell:
+        body_lines.append(f"STRONG SELL: {', '.join(sell)}")
+    if dropped:
+        body_lines.append(f"Dividend Dropped: {', '.join(dropped)}")
+    body_lines.append(f"{len(buys)} of {total} qualify (yield > {min_yield}%)")
+    if buys:
+        body_lines.append("BUY: " + ", ".join(buys))
+    body = "\n".join(body_lines)
+
+    # Bump priority and add a warning tag when there is something actionable.
+    actionable = bool(sell or dropped)
+    headers = {
+        "Title": "Nifty 50 Dividend Screen",
+        "Priority": "high" if actionable else "default",
+        "Tags": "warning,chart_with_upwards_trend" if actionable
+                else "chart_with_upwards_trend",
+    }
+    token = os.environ.get("NTFY_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    try:
+        resp = requests.post(
+            f"{server}/{topic}",
+            data=body.encode("utf-8"),
+            headers=headers,
+            timeout=15,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        print(f"WARNING: could not send ntfy notification: {exc}")
+        return
+    print("Push notification sent via ntfy.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--min-yield", type=float, default=2.0,
@@ -302,6 +363,7 @@ def main():
     print(f"\nSuggestions.md updated ({generated_at}).")
 
     post_to_slack(rows, args.min_yield, generated_at, len(constituents))
+    post_to_ntfy(rows, args.min_yield, len(constituents))
 
 
 if __name__ == "__main__":
