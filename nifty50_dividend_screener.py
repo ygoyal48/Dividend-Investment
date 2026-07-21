@@ -10,20 +10,24 @@ import re
 import sys
 import time
 from datetime import datetime, timezone
+from html import unescape
 
 import requests
 
 LOGIN_URL = "https://www.screener.in/login/"
-NIFTY50_CSV_URL = "https://niftyindices.com/IndexConstituent/ind_nifty50list.csv"
 _HERE = os.path.dirname(os.path.abspath(__file__))
 SUGGESTIONS_PATH = os.path.join(_HERE, "Suggestions.md")
 
-# niftyindices sits behind a WAF that blocks bare user-agents; use browser headers.
-NIFTY_HEADERS = {
+# A full nifty 50 has 50 constituents; reject a source that returns far fewer,
+# which usually means a garbled download or a partial parse.
+MIN_CONSTITUENTS = 45
+
+# Some sources sit behind a WAF that blocks bare user-agents; use browser headers.
+BROWSER_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
     "Referer": "https://www.niftyindices.com/indices/equity/broad-based-indices/nifty-50",
-    "Accept": "text/csv,text/plain,*/*",
+    "Accept": "text/csv,text/html,text/plain,*/*",
     "Accept-Language": "en-US,en;q=0.9",
 }
 
@@ -43,33 +47,81 @@ def login(session, username, password):
 
 
 def _parse_constituents_csv(text):
+    """Parse the official NSE-format CSV (Company Name, Industry, Symbol, ...)."""
     rows = list(csv.DictReader(text.splitlines()))
     return [(row["Company Name"].strip(), row["Symbol"].strip()) for row in rows]
 
 
-def fetch_nifty50_constituents(session, retries=3):
-    """Fetch the live Nifty 50 constituent list from niftyindices.
+def _parse_wikipedia_table(html):
+    """Parse the '#constituents' wikitable (columns: Company name, Symbol, ...)."""
+    i = html.find('id="constituents"')
+    if i == -1:
+        raise ValueError("constituents table not found in page")
+    segment = html[i:]
+    end = segment.find("</table>")
+    if end != -1:
+        segment = segment[:end]
+    out = []
+    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", segment, re.DOTALL):
+        cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.DOTALL)
+        if len(cells) < 2:
+            continue
+        company = unescape(re.sub(r"<[^>]+>", "", cells[0])).strip()
+        symbol = unescape(re.sub(r"<[^>]+>", "", cells[1])).strip()
+        if re.fullmatch(r"[A-Z0-9&.\-]{1,20}", symbol):
+            out.append((company, symbol))
+    return out
 
-    Raises RuntimeError if every live attempt fails - there is no fallback,
-    so a stale/hardcoded list is never used.
+
+def _source_csv(url):
+    def fetch(session):
+        resp = session.get(url, headers=BROWSER_HEADERS, timeout=20)
+        resp.raise_for_status()
+        return _parse_constituents_csv(resp.text)
+    return fetch
+
+
+def _source_wikipedia(url):
+    def fetch(session):
+        resp = session.get(url, headers=BROWSER_HEADERS, timeout=20)
+        resp.raise_for_status()
+        return _parse_wikipedia_table(resp.text)
+    return fetch
+
+
+# Ordered list of independent live sources. Each is tried in turn; the first
+# that returns a plausible constituent list wins. There is no offline fallback.
+NIFTY50_SOURCES = [
+    ("niftyindices.com CSV",
+     _source_csv("https://niftyindices.com/IndexConstituent/ind_nifty50list.csv")),
+    ("NSE archives CSV",
+     _source_csv("https://archives.nseindia.com/content/indices/ind_nifty50list.csv")),
+    ("Wikipedia",
+     _source_wikipedia("https://en.wikipedia.org/wiki/NIFTY_50")),
+    ("Wikipedia REST API",
+     _source_wikipedia("https://en.wikipedia.org/api/rest_v1/page/html/NIFTY_50")),
+]
+
+
+def fetch_nifty50_constituents(session):
+    """Fetch the live Nifty 50 constituent list, trying each source in order.
+
+    Raises RuntimeError (which the CLI reports as an error) if every source
+    fails - there is no offline/hardcoded fallback.
     """
-    last_error = None
-    for attempt in range(retries):
+    errors = []
+    for name, fetch in NIFTY50_SOURCES:
         try:
-            resp = session.get(NIFTY50_CSV_URL, headers=NIFTY_HEADERS, timeout=20)
-            resp.raise_for_status()
-            constituents = _parse_constituents_csv(resp.text)
-            if constituents:
-                return constituents
-            last_error = "empty constituent list"
-        except (requests.RequestException, KeyError) as exc:
-            last_error = exc
-        time.sleep(2 * (attempt + 1))
+            constituents = fetch(session)
+            if len(constituents) < MIN_CONSTITUENTS:
+                raise ValueError(f"only {len(constituents)} constituents parsed")
+            print(f"Fetched Nifty 50 constituents from {name} ({len(constituents)} stocks).")
+            return constituents
+        except Exception as exc:  # noqa: BLE001 - any failure should fall through
+            errors.append(f"{name}: {exc}")
 
-    raise RuntimeError(
-        f"Could not fetch the live Nifty 50 constituent list from niftyindices "
-        f"after {retries} attempts ({last_error})."
-    )
+    detail = "; ".join(errors)
+    raise RuntimeError(f"All Nifty 50 constituent sources failed -> {detail}")
 
 
 def fetch_dividend_yield(session, symbol, retries=2):
