@@ -83,6 +83,28 @@ usually what the user cares about most.
 If the script printed an `ERROR:` line (e.g. all constituent sources were
 blocked, or login failed), report that honestly instead of inventing results.
 
+## Delivering the report over Slack
+
+After a successful run, share the report in the user's private Slack channel so
+it lands somewhere durable and actually pings them:
+
+- **Channel:** `#dividend-reports` (private), channel_id `C0BJB2WBB7Z`.
+- **Always @-mention the user** — `<@U0BJL1X5KS7>` — at the top of the message.
+  This matters: Slack does **not** send a notification for a message posted to
+  one's own DM, but an @-mention in a channel does. Skipping the mention means
+  the user never finds out the report arrived.
+
+Post it with `slack_send_message` (load the Slack tools via ToolSearch if they
+aren't already available). Use the same Symbol | Signal markdown table you show
+in chat, with a short header line and the "X of 50 qualify / what changed"
+summary. Lead with any STRONG SELL or Dividend Dropped rows so the delta is the
+first thing the user sees.
+
+If that channel ever can't be found (different workspace, deleted channel),
+don't silently fall back to a self-DM — it won't notify. Recreate the private
+channel with `slack_create_conversation(channel_name="dividend-reports",
+is_private=True)` or ask the user where to post, then send with the mention.
+
 ## Persisting the update
 
 The script has already overwritten `Suggestions.md` by the time it finishes —
