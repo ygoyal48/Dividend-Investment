@@ -126,7 +126,19 @@ commit the Screener credentials or other environment secrets.
 ## Persisting the update
 
 The script has already overwritten `Suggestions.md` by the time it finishes —
-that's the persisted list. If you're working in the repo and the user expects
-the change tracked, stage and commit it (`git add Suggestions.md`), matching
-however the surrounding session handles commits and pushes. Don't commit
-credentials or environment values.
+that's the persisted list. Commit and push that change **directly to the `main`
+branch**. Do **not** create a new branch, and do **not** open a pull request —
+`main` is the only branch this skill writes to.
+
+If the working tree is on some other branch, switch to `main` first
+(`git checkout main`), then stage, commit, and push straight to it:
+
+```bash
+git checkout main            # only if you aren't already on main
+git add Suggestions.md
+git commit -m "Refresh Nifty 50 dividend screen"
+git push origin main
+```
+
+Commit only `Suggestions.md` — never commit the Screener credentials or other
+environment secrets.
