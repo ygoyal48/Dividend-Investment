@@ -55,17 +55,16 @@ and merely yields less, that's a hold, not a sell.
   clear message — tell the user to set them rather than trying to work around it.
 - Dependencies: `pip install -r requirements.txt` (just `requests`).
 - **For phone push via ntfy** the script sends the report as a push
-  notification through [ntfy](https://ntfy.sh) when `NTFY_TOPIC` is set (see the
-  `post_to_ntfy` function and "Delivering the report over ntfy" below). The user
-  installs the ntfy app and subscribes to the same topic; no account or token is
-  needed on ntfy.sh.
-  - `NTFY_TOPIC` — the topic to publish to. **Anyone who knows the topic can read
-    it**, so use a long, unguessable value (treat like a secret).
+  notification through [ntfy](https://ntfy.sh) (see the `post_to_ntfy` function
+  and "Delivering the report over ntfy" below). The topic is **hardcoded** as
+  `NTFY_DEFAULT_TOPIC` in the script (`DividendStocksNiftyYatin-f25fd97a`), so the
+  push works with no configuration — the user just installs the ntfy app and
+  subscribes to that topic. No account or token is needed on ntfy.sh.
+  - `NTFY_TOPIC` — optional override for the hardcoded topic (set `NTFY_TOPIC=""`
+    to disable the push). **Anyone who knows the topic can read it**, so keep any
+    override long and unguessable.
   - `NTFY_SERVER` — optional, defaults to `https://ntfy.sh`.
   - `NTFY_TOKEN` — optional bearer token for a protected/self-hosted server.
-
-  Newly-added environment variables only take effect in a **fresh session** — a
-  container already running when they were added won't see them.
 
 ## Running it
 
@@ -102,8 +101,9 @@ notification, so it actually pings them. A push from ntfy comes from the ntfy
 service (not the user's own account), so there's no self-notification problem to
 work around.
 
-**The script sends it.** When `NTFY_TOPIC` is set, the screener publishes the
-report itself (see `post_to_ntfy` in `nifty50_dividend_screener.py`) and prints
+**The script sends it.** The screener publishes the report itself (see
+`post_to_ntfy` in `nifty50_dividend_screener.py`) to the hardcoded
+`NTFY_DEFAULT_TOPIC` — overridable with the `NTFY_TOPIC` env var — and prints
 `Push notification sent via ntfy.` on success. You don't post anything yourself —
 just show the full Symbol | Signal table in chat as described above.
 
@@ -116,16 +116,12 @@ changes stand out.
 If the run prints `WARNING: could not send ntfy notification: ...`, the publish
 failed (network/proxy blocked, or a bad `NTFY_SERVER`/`NTFY_TOKEN`) — report it
 honestly; the report was still written to `Suggestions.md`. If the run prints
-nothing about ntfy, `NTFY_TOPIC` isn't set (e.g. an already-running session that
-predates the variable) — tell the user to set it and re-run from a fresh session,
-or pass it inline for a one-off:
+nothing about ntfy at all, the push was disabled (`NTFY_TOPIC` set to empty).
 
-```bash
-NTFY_TOPIC='<the-topic>' python nifty50_dividend_screener.py
-```
-
-Reminder on the topic: it acts as a password (there's no auth on ntfy.sh), so
-keep it long and unguessable, and never commit it or other environment values.
+Note on the topic: it acts as a password (there's no auth on ntfy.sh) and is
+deliberately hardcoded in the script for convenience, so it lives in the repo. If
+the repo is ever public, rotate it by changing `NTFY_DEFAULT_TOPIC`. Still never
+commit the Screener credentials or other environment secrets.
 
 ## Persisting the update
 

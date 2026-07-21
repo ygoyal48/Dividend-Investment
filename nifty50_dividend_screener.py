@@ -189,22 +189,28 @@ def write_suggestions(path, rows, min_yield, generated_at):
 
 
 NTFY_DEFAULT_SERVER = "https://ntfy.sh"
+# Default topic to publish to; override with the NTFY_TOPIC env var. The topic
+# acts as a password (there is no auth on ntfy.sh), so rotate it here if it leaks.
+NTFY_DEFAULT_TOPIC = "DividendStocksNiftyYatin-f25fd97a"
 
 
 def post_to_ntfy(rows):
-    """Send the report as a phone push notification via ntfy, if configured.
+    """Send the report as a phone push notification via ntfy.
 
     ntfy (https://ntfy.sh) delivers push notifications to the ntfy phone app
     with no account needed: the script publishes to a topic, the phone
     subscribes to that same topic. Anyone who knows the topic name can read it,
     so it should be long and unguessable - treat it like a secret.
 
-    Configuration (environment variables; skipped silently if NTFY_TOPIC unset):
-      NTFY_TOPIC   topic to publish to (treat like a secret)
+    The topic defaults to NTFY_DEFAULT_TOPIC (hardcoded above) so the push works
+    out of the box; set NTFY_TOPIC to override it, or NTFY_TOPIC="" to disable.
+
+    Configuration (all optional environment variables):
+      NTFY_TOPIC   topic to publish to (defaults to NTFY_DEFAULT_TOPIC)
       NTFY_SERVER  base URL of the ntfy server (default https://ntfy.sh)
       NTFY_TOKEN   optional bearer token for a protected/self-hosted server
     """
-    topic = os.environ.get("NTFY_TOPIC")
+    topic = os.environ.get("NTFY_TOPIC", NTFY_DEFAULT_TOPIC)
     if not topic:
         return
     server = os.environ.get("NTFY_SERVER", NTFY_DEFAULT_SERVER).rstrip("/")
