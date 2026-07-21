@@ -188,6 +188,58 @@ def write_suggestions(path, rows, min_yield, generated_at):
         f.write("\n".join(lines) + "\n")
 
 
+SLACK_API_URL = "https://slack.com/api/chat.postMessage"
+
+
+def post_to_slack(rows, min_yield, generated_at, total):
+    """Post the report to Slack as a bot, if bot credentials are configured.
+
+    Slack only notifies a user when a *different* identity mentions them, so a
+    message sent from the user's own account never pings them. Posting through a
+    bot token (SLACK_BOT_TOKEN, an xoxb-... token) makes the report come from a
+    separate bot identity, so the @-mention actually notifies.
+
+    Configuration (all via environment variables; skipped silently if unset):
+      SLACK_BOT_TOKEN       bot user OAuth token (xoxb-...)
+      SLACK_CHANNEL_ID      target channel id (the bot must be a member)
+      SLACK_MENTION_USER_ID optional user id to @-mention at the top
+    """
+    token = os.environ.get("SLACK_BOT_TOKEN")
+    channel = os.environ.get("SLACK_CHANNEL_ID")
+    if not token or not channel:
+        return
+    mention = os.environ.get("SLACK_MENTION_USER_ID")
+
+    qualifying = sum(1 for _, signal in rows if signal == BUY)
+    lead = f"<@{mention}> " if mention else ""
+    lines = [
+        f"{lead}:bar_chart: *Nifty 50 Dividend Yield Screen* - _{generated_at}_",
+        "",
+        f"*{qualifying} of {total} qualify* (dividend yield > {min_yield}%).",
+        "",
+        "| Symbol | Signal |",
+        "|---|---|",
+    ]
+    for symbol, signal in rows:
+        lines.append(f"| {symbol} | {signal} |")
+
+    try:
+        resp = requests.post(
+            SLACK_API_URL,
+            headers={"Authorization": f"Bearer {token}"},
+            json={"channel": channel, "text": "\n".join(lines)},
+            timeout=15,
+        )
+        data = resp.json()
+    except (requests.RequestException, ValueError) as exc:
+        print(f"WARNING: could not post to Slack: {exc}")
+        return
+    if data.get("ok"):
+        print("Report posted to Slack.")
+    else:
+        print(f"WARNING: Slack post failed: {data.get('error')}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--min-yield", type=float, default=2.0,
@@ -248,6 +300,8 @@ def main():
 
     write_suggestions(SUGGESTIONS_PATH, rows, args.min_yield, generated_at)
     print(f"\nSuggestions.md updated ({generated_at}).")
+
+    post_to_slack(rows, args.min_yield, generated_at, len(constituents))
 
 
 if __name__ == "__main__":

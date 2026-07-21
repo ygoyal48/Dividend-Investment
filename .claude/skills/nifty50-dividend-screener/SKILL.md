@@ -85,25 +85,42 @@ blocked, or login failed), report that honestly instead of inventing results.
 
 ## Delivering the report over Slack
 
-After a successful run, share the report in the user's private Slack channel so
-it lands somewhere durable and actually pings them:
+The report is posted to the user's private `#dividend-reports` channel so it
+lands somewhere durable and actually pings them.
 
-- **Channel:** `#dividend-reports` (private), channel_id `C0BJB2WBB7Z`.
-- **Always @-mention the user** — `<@U0BJL1X5KS7>` — at the top of the message.
-  This matters: Slack does **not** send a notification for a message posted to
-  one's own DM, but an @-mention in a channel does. Skipping the mention means
-  the user never finds out the report arrived.
+**Who posts matters.** Slack never notifies you about a message you posted
+yourself — including a self-@mention. The Slack MCP tools here are authenticated
+as the *user*, so anything sent with `slack_send_message` goes out under the
+user's own name and will **not** notify them, no matter the mention. Getting a
+real ping requires a *different* identity (a bot) to post and mention the user.
 
-Post it with `slack_send_message` (load the Slack tools via ToolSearch if they
-aren't already available). Use the same Symbol | Signal markdown table you show
-in chat, with a short header line and the "X of 50 qualify / what changed"
-summary. Lead with any STRONG SELL or Dividend Dropped rows so the delta is the
-first thing the user sees.
+**Preferred path — the script posts as a bot.** The screener itself posts the
+report when these environment variables are set (see the `post_to_slack`
+function in `nifty50_dividend_screener.py`):
 
-If that channel ever can't be found (different workspace, deleted channel),
-don't silently fall back to a self-DM — it won't notify. Recreate the private
-channel with `slack_create_conversation(channel_name="dividend-reports",
-is_private=True)` or ask the user where to post, then send with the mention.
+- `SLACK_BOT_TOKEN` — a bot user OAuth token (`xoxb-...`) for a Slack app the
+  user created; the bot must be invited to the channel.
+- `SLACK_CHANNEL_ID` — `C0BJB2WBB7Z` (the private `#dividend-reports`).
+- `SLACK_MENTION_USER_ID` — `U0BJL1X5KS7` (the user, @-mentioned at the top).
+
+When the run prints `Report posted to Slack.`, the bot already delivered it —
+**do not** also post via `slack_send_message`, or the user gets a duplicate (and
+the duplicate from their own account is the one that doesn't notify anyway). Just
+show the table in chat.
+
+**Fallback when the bot isn't configured.** If the run doesn't print
+`Report posted to Slack.` (bot env vars unset), you may still post with
+`slack_send_message` to `C0BJB2WBB7Z` with the `<@U0BJL1X5KS7>` mention so the
+report at least lands in the channel — but tell the user plainly it won't notify
+them until the bot token is set up, and point them at the `SLACK_BOT_TOKEN`
+setup above. Use the same Symbol | Signal table with a short header and the
+"X of 50 qualify / what changed" summary; lead with any STRONG SELL or Dividend
+Dropped rows.
+
+If the channel can't be found (different workspace, deleted channel), don't
+silently fall back to a self-DM — it won't notify. Recreate it with
+`slack_create_conversation(channel_name="dividend-reports", is_private=True)` or
+ask the user where to post.
 
 ## Persisting the update
 
