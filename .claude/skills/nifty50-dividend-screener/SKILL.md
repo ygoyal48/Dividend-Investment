@@ -107,9 +107,11 @@ report itself (see `post_to_ntfy` in `nifty50_dividend_screener.py`) and prints
 `Push notification sent via ntfy.` on success. You don't post anything yourself —
 just show the full Symbol | Signal table in chat as described above.
 
-The push is a concise summary, not the full table: the qualifying count and the
-BUY list, with any STRONG SELL / Dividend Dropped symbols led first and the
-notification bumped to high priority so actionable changes stand out.
+The push is titled **IMPORTANT: Nifty Dividend Update** (with a red alert emoji)
+and its body is just each action followed by its stock symbols — STRONG SELL and
+Dividend Dropped led first, then BUY — with no counts or yield line. It's bumped
+to high priority when there's a STRONG SELL or Dividend Dropped so actionable
+changes stand out.
 
 If the run prints `WARNING: could not send ntfy notification: ...`, the publish
 failed (network/proxy blocked, or a bad `NTFY_SERVER`/`NTFY_TOKEN`) — report it

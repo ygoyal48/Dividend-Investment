@@ -191,7 +191,7 @@ def write_suggestions(path, rows, min_yield, generated_at):
 NTFY_DEFAULT_SERVER = "https://ntfy.sh"
 
 
-def post_to_ntfy(rows, min_yield, total):
+def post_to_ntfy(rows):
     """Send the report as a phone push notification via ntfy, if configured.
 
     ntfy (https://ntfy.sh) delivers push notifications to the ntfy phone app
@@ -213,23 +213,22 @@ def post_to_ntfy(rows, min_yield, total):
     dropped = [s for s, sig in rows if sig == DIVIDEND_DROPPED]
     buys = [s for s, sig in rows if sig == BUY]
 
+    # Body is just each action followed by its stock symbols, most urgent first.
     body_lines = []
     if sell:
         body_lines.append(f"STRONG SELL: {', '.join(sell)}")
     if dropped:
         body_lines.append(f"Dividend Dropped: {', '.join(dropped)}")
-    body_lines.append(f"{len(buys)} of {total} qualify (yield > {min_yield}%)")
     if buys:
-        body_lines.append("BUY: " + ", ".join(buys))
-    body = "\n".join(body_lines)
+        body_lines.append(f"BUY: {', '.join(buys)}")
+    body = "\n".join(body_lines) if body_lines else "No stocks above threshold."
 
-    # Bump priority and add a warning tag when there is something actionable.
+    # Bump priority when there's something actionable (a sell or a dropped yield).
     actionable = bool(sell or dropped)
     headers = {
-        "Title": "Nifty 50 Dividend Screen",
+        "Title": "IMPORTANT: Nifty Dividend Update",
         "Priority": "high" if actionable else "default",
-        "Tags": "warning,chart_with_upwards_trend" if actionable
-                else "chart_with_upwards_trend",
+        "Tags": "rotating_light",  # red alert emoji, shown before the title
     }
     token = os.environ.get("NTFY_TOKEN")
     if token:
@@ -310,7 +309,7 @@ def main():
     write_suggestions(SUGGESTIONS_PATH, rows, args.min_yield, generated_at)
     print(f"\nSuggestions.md updated ({generated_at}).")
 
-    post_to_ntfy(rows, args.min_yield, len(constituents))
+    post_to_ntfy(rows)
 
 
 if __name__ == "__main__":
