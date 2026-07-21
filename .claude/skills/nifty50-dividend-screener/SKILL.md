@@ -54,6 +54,19 @@ and merely yields less, that's a hold, not a sell.
   user's Screener.in credentials. If they're missing, the script exits with a
   clear message — tell the user to set them rather than trying to work around it.
 - Dependencies: `pip install -r requirements.txt` (just `requests`).
+- **For Slack delivery (optional but preferred)** the script posts the report
+  through a bot so it actually notifies the user (see "Delivering the report
+  over Slack" below). Set these environment variables:
+  - `SLACK_BOT_TOKEN` — a bot user OAuth token (`xoxb-...`) from a Slack app the
+    user created with the `chat:write` scope.
+  - `SLACK_CHANNEL_ID` — `C0BJB2WBB7Z` (the private `#dividend-reports`).
+  - `SLACK_MENTION_USER_ID` — `U0BJL1X5KS7` (the user, @-mentioned at the top).
+
+  The bot must be **invited to the channel** (`/invite @<botname>`), otherwise a
+  private channel is invisible to it and `chat.postMessage` returns
+  `channel_not_found`. Newly-added environment variables only take effect in a
+  **fresh session** — a container already running when they were added won't see
+  them.
 
 ## Running it
 
@@ -107,6 +120,12 @@ When the run prints `Report posted to Slack.`, the bot already delivered it —
 **do not** also post via `slack_send_message`, or the user gets a duplicate (and
 the duplicate from their own account is the one that doesn't notify anyway). Just
 show the table in chat.
+
+If the run instead prints `WARNING: Slack post failed: channel_not_found`, the
+token is valid but the **bot isn't a member of the private channel** — tell the
+user to invite it (`/invite @<botname>` in `#dividend-reports`), then re-run.
+`invalid_auth`/`token_revoked` means the `SLACK_BOT_TOKEN` is wrong or rotated;
+`not_in_channel` also means invite the bot.
 
 **Fallback when the bot isn't configured.** If the run doesn't print
 `Report posted to Slack.` (bot env vars unset), you may still post with
