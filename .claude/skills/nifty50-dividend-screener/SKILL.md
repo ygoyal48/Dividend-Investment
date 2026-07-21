@@ -126,19 +126,36 @@ commit the Screener credentials or other environment secrets.
 ## Persisting the update
 
 The script has already overwritten `Suggestions.md` by the time it finishes —
-that's the persisted list. Commit and push that change **directly to the `main`
-branch**. Do **not** create a new branch, and do **not** open a pull request —
-`main` is the only branch this skill writes to.
+that's the persisted list. Persist it in **two steps**: commit it on whatever
+branch you're working on, then merge that change into `main` so `main` always
+carries the latest screen. Commit only `Suggestions.md` — never commit the
+Screener credentials or other environment secrets.
 
-If the working tree is on some other branch, switch to `main` first
-(`git checkout main`), then stage, commit, and push straight to it:
+**1. Commit on the current branch and push it.** Stage just `Suggestions.md`,
+commit, and push the branch you're on (the session's feature branch, or `main`
+itself if that's already where you are):
 
 ```bash
-git checkout main            # only if you aren't already on main
 git add Suggestions.md
 git commit -m "Refresh Nifty 50 dividend screen"
-git push origin main
+git push -u origin "$(git branch --show-current)"
 ```
 
-Commit only `Suggestions.md` — never commit the Screener credentials or other
-environment secrets.
+**2. Merge that change into `main` and push `main`.** Fast-forward `main` up to
+the commit you just made, then push it. Because each run is a one-line update to
+a single file, this is normally a clean fast-forward — no merge commit, no
+conflicts:
+
+```bash
+BRANCH="$(git branch --show-current)"
+git checkout main
+git merge --ff-only "$BRANCH"        # single-file update -> clean fast-forward
+git push origin main
+git checkout "$BRANCH"               # return to the working branch
+```
+
+If you were already on `main` in step 1, step 2 is a no-op — the push already
+updated `main`. Do **not** open a pull request; merging straight into `main` is
+the intended flow. If `--ff-only` is ever rejected because `main` moved on
+independently, bring the branch up to date first (`git fetch origin main` then
+`git rebase origin/main`) and retry.
